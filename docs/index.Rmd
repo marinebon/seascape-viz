@@ -1,0 +1,14 @@
+---
+title: "Seascape Explorer"
+#date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+The **Seascape Explorer** will be a visualization application for exploring the seascape classes through space and time, using the R package [shiny](http://shiny.rstudio.com/).
+
+### Preparation
+
+See [prep](./prep.html) on manipulations to go from original Matlab (*.mat) files to using in R.

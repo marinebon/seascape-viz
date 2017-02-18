@@ -1,0 +1,112 @@
+---
+title: "Seascape Visualization Preparation"
+author: "Ben Best"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: false
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Prepare Matlab Files
+
+Read many Matlab files (*.mat) that have the same grid topology into a single raster brick and write to filesystem for use in R.
+
+```{r mat2grd, eval=F}
+library(tidyverse)
+library(R.matlab)
+library(raster)
+library(stringr)
+
+if (basename(getwd()) != 'docs') setwd('docs')
+grd = '../data/GOMFK_I90VAR3_SM1k.grd'
+
+B = list() # list of raster stacks per month
+months = c(Mar=3, May=5, Sep=9)
+for (mo in names(months)){ # mo = months
+  
+  # directory
+  dir_mat   = sprintf('../data/mat/%s_2016', mo)
+  
+  # grid extent
+  g = readMat(sprintf('%s/GRID.mat', dir_mat))
+  e = extent(
+    min(g$lon1[1,]), max(g$lon1[1,]),
+    min(g$lat1[,1]), max(g$lat1[,1]))
+  
+  # iterate files
+  mats = list.files(dir_mat, 'GOMFK_.*')
+  for (mat in mats){ # mat = mats[1]
+    
+    # output R raster grid
+    grd = sprintf('%s/%s.grd', dir_grd, tools::file_path_sans_ext(mat))
+    
+    # read matlab
+    m = readMat(sprintf('%s/%s', dir_mat, mat))
+    cat(sprintf('%s - %s [%d x %d]: %s\n', mo, mat, nrow(m[[1]]), ncol(m[[1]]), paste(names(m), collapse=', ')))
+    
+    # create raster stack with coord ref sys of geographic
+    B[mat] = brick(lapply(m, raster)) %>% flip('y') %>% setExtent(e)
+    crs(B[[mat]]) = leaflet:::epsg4326
+  }
+}
+
+# consolidate list of bricks
+b = stack(B)
+sfx  = names(B) %>% str_split('_', simplify=T) %>% .[,4] %>% str_sub(1,4)
+vars = names(B[[1]])
+names(b) = sprintf(
+  '%s_%s', 
+  rep(vars,      length(sfx)),
+  rep(sfx , each=length(vars)))
+writeRaster(b, grd, overwrite=T)
+```
+
+## Maps
+
+The legend title describes the value [CLASS|P].[OCI|sw] and the layers are labeled according to month and day (MMDD) of the start.
+
+```{r leaflet, warning=F, message=F}
+library(tidyverse)
+library(raster)
+library(leaflet)
+
+grd = '../data/GOMFK_I90VAR3_SM1k.grd'
+b = brick(grd)
+
+pfx = c('CLASS.OCI','CLASS.sw','P.OCI','P.sw')
+sfx = c('0304','0311','0502','0509','0912','0919')
+op
+map_i = function(i){
+  vars = sprintf('%s_%s', pfx[i], sfx)
+  vals = sapply(vars, function(x) getValues(raster(b, layer=x)))
+  pal = colorNumeric('Spectral', vals, na.color = "transparent")
+  
+  leaflet() %>%
+    addProviderTiles('Esri.OceanBasemap') %>%
+    addRasterImage(raster(b, layer=sprintf('%s_%s',pfx[i],sfx[1])), colors = pal, opacity=0.7, group=sfx[1]) %>%
+    addRasterImage(raster(b, layer=sprintf('%s_%s',pfx[i],sfx[2])), colors = pal, opacity=0.7, group=sfx[2]) %>%
+    addRasterImage(raster(b, layer=sprintf('%s_%s',pfx[i],sfx[3])), colors = pal, opacity=0.7, group=sfx[3]) %>%
+    addRasterImage(raster(b, layer=sprintf('%s_%s',pfx[i],sfx[4])), colors = pal, opacity=0.7, group=sfx[4]) %>%
+    addRasterImage(raster(b, layer=sprintf('%s_%s',pfx[i],sfx[5])), colors = pal, opacity=0.7, group=sfx[5]) %>%
+    addRasterImage(raster(b, layer=sprintf('%s_%s',pfx[i],sfx[6])), colors = pal, opacity=0.7, group=sfx[6]) %>%
+    addLegend('topleft', pal = pal, values = vals, title = pfx[i], opacity = 1) %>%
+    addLayersControl(overlayGroups = sfx, options = layersControlOptions(collapsed = FALSE))
+}
+map_i(1)
+map_i(2)
+map_i(3)
+map_i(4)
+#[CLASS|P].[OCI|sw]
+```
+
+## App
+
+- selectinput choose class
+
